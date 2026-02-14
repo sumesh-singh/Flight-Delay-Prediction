@@ -1,0 +1,370 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Flight Delay Prediction - Experiment Log Schema",
+    "description": "Schema for tracking machine learning experiment results",
+    "type": "object",
+    "required": [
+        "run_id",
+        "model_type",
+        "dataset_version",
+        "n_samples_train",
+        "n_samples_test",
+        "n_features",
+        "hyperparameters",
+        "metrics",
+        "timestamp"
+    ],
+    "properties": {
+        "run_id": {
+            "type": "string",
+            "pattern": "^run_[0-9]{8}_[0-9]{6}_[a-z_]+$",
+            "description": "Unique run identifier (e.g., run_20260210_120045_rf_default)",
+            "examples": [
+                "run_20260210_120045_rf_default",
+                "run_20260210_130122_lr_baseline"
+            ]
+        },
+        "model_type": {
+            "type": "string",
+            "enum": [
+                "LogisticRegression",
+                "RandomForestClassifier"
+            ],
+            "description": "Model algorithm used"
+        },
+        "dataset_version": {
+            "type": "string",
+            "pattern": "^[a-z0-9_\\-]+_[0-9]{8}\\.parquet$",
+            "description": "Version of dataset used (e.g., features_20260210.parquet)",
+            "examples": [
+                "features_20260210.parquet",
+                "cleaned_data_20260210.parquet"
+            ]
+        },
+        "n_samples_train": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Number of training samples"
+        },
+        "n_samples_test": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Number of test samples"
+        },
+        "n_features": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Number of features used"
+        },
+        "feature_list": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "description": "List of feature names used in training",
+            "minItems": 1
+        },
+        "hyperparameters": {
+            "type": "object",
+            "description": "Model hyperparameters",
+            "oneOf": [
+                {
+                    "title": "Logistic Regression Parameters",
+                    "properties": {
+                        "penalty": {
+                            "type": "string",
+                            "enum": [
+                                "l1",
+                                "l2",
+                                "elasticnet",
+                                "none"
+                            ]
+                        },
+                        "C": {
+                            "type": "number",
+                            "minimum": 0
+                        },
+                        "max_iter": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "random_state": {
+                            "type": "integer"
+                        },
+                        "solver": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "penalty",
+                        "C",
+                        "max_iter",
+                        "random_state"
+                    ]
+                },
+                {
+                    "title": "Random Forest Parameters",
+                    "properties": {
+                        "n_estimators": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "max_depth": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "minimum": 1
+                        },
+                        "min_samples_split": {
+                            "type": "integer",
+                            "minimum": 2
+                        },
+                        "min_samples_leaf": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "max_features": {
+                            "type": [
+                                "string",
+                                "number"
+                            ]
+                        },
+                        "bootstrap": {
+                            "type": "boolean"
+                        },
+                        "random_state": {
+                            "type": "integer"
+                        },
+                        "oob_score": {
+                            "type": "boolean"
+                        }
+                    },
+                    "required": [
+                        "n_estimators",
+                        "random_state"
+                    ]
+                }
+            ]
+        },
+        "metrics": {
+            "type": "object",
+            "required": [
+                "train",
+                "test",
+                "training_time_sec"
+            ],
+            "properties": {
+                "train": {
+                    "type": "object",
+                    "required": [
+                        "accuracy",
+                        "precision",
+                        "recall",
+                        "f1"
+                    ],
+                    "properties": {
+                        "accuracy": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                        },
+                        "precision": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                        },
+                        "recall": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                        },
+                        "f1": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                        },
+                        "roc_auc": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                        }
+                    }
+                },
+                "test": {
+                    "type": "object",
+                    "required": [
+                        "accuracy",
+                        "precision",
+                        "recall",
+                        "f1"
+                    ],
+                    "properties": {
+                        "accuracy": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                        },
+                        "precision": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                        },
+                        "recall": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                        },
+                        "f1": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                        },
+                        "roc_auc": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                        }
+                    }
+                },
+                "oob_score": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Out-of-bag score (Random Forest only)"
+                },
+                "training_time_sec": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Training time in seconds"
+                },
+                "inference_time_ms": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Average inference time per prediction in milliseconds"
+                }
+            }
+        },
+        "feature_importance_top10": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": [
+                    "feature",
+                    "importance"
+                ],
+                "properties": {
+                    "feature": {
+                        "type": "string"
+                    },
+                    "importance": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                    }
+                }
+            },
+            "maxItems": 10,
+            "description": "Top 10 most important features"
+        },
+        "confusion_matrix": {
+            "type": "array",
+            "description": "2x2 confusion matrix [[TN, FP], [FN, TP]]",
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "minItems": 2,
+                "maxItems": 2
+            },
+            "minItems": 2,
+            "maxItems": 2
+        },
+        "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO-8601 timestamp of experiment run"
+        },
+        "git_commit": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{7,40}$",
+            "description": "Git commit hash for reproducibility"
+        },
+        "config_version": {
+            "type": "string",
+            "description": "Version of configuration files used"
+        },
+        "notes": {
+            "type": "string",
+            "description": "Optional notes about the experiment"
+        }
+    },
+    "examples": [
+        {
+            "run_id": "run_20260210_120045_rf_default",
+            "model_type": "RandomForestClassifier",
+            "dataset_version": "features_20260210.parquet",
+            "n_samples_train": 4987234,
+            "n_samples_test": 1246809,
+            "n_features": 35,
+            "feature_list": [
+                "hour_sin",
+                "hour_cos",
+                "carrier_delay_rate"
+            ],
+            "hyperparameters": {
+                "n_estimators": 100,
+                "max_depth": 10,
+                "min_samples_split": 50,
+                "min_samples_leaf": 20,
+                "max_features": "sqrt",
+                "random_state": 42
+            },
+            "metrics": {
+                "train": {
+                    "accuracy": 0.8734,
+                    "precision": 0.8123,
+                    "recall": 0.7845,
+                    "f1": 0.7982,
+                    "roc_auc": 0.9012
+                },
+                "test": {
+                    "accuracy": 0.8521,
+                    "precision": 0.7956,
+                    "recall": 0.7612,
+                    "f1": 0.7780,
+                    "roc_auc": 0.8834
+                },
+                "oob_score": 0.8498,
+                "training_time_sec": 287.4,
+                "inference_time_ms": 12.3
+            },
+            "feature_importance_top10": [
+                {
+                    "feature": "prev_flight_delay",
+                    "importance": 0.1523
+                },
+                {
+                    "feature": "carrier_delay_rate",
+                    "importance": 0.1289
+                }
+            ],
+            "confusion_matrix": [
+                [
+                    892341,
+                    87654
+                ],
+                [
+                    65432,
+                    201382
+                ]
+            ],
+            "timestamp": "2026-02-10T12:00:45.123Z",
+            "git_commit": "a1b2c3d4",
+            "config_version": "data_config_v1.0"
+        }
+    ]
+}

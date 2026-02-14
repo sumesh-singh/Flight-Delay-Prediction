@@ -1,0 +1,492 @@
+{
+  "lr_run1": {
+    "model_type": "logistic_regression",
+    "run_id": 1,
+    "test_metrics": {
+      "accuracy": 0.8391881342701015,
+      "precision": 0.24074074074074073,
+      "recall": 0.022033898305084745,
+      "f1": 0.040372670807453416,
+      "roc_auc": 0.6716652685656526,
+      "confusion_matrix": [
+        [
+          3212,
+          41
+        ],
+        [
+          577,
+          13
+        ]
+      ],
+      "confusion_matrix_dict": {
+        "TN": 3212,
+        "FP": 41,
+        "FN": 577,
+        "TP": 13
+      }
+    },
+    "train_metrics": {
+      "accuracy": 0.7663326392503904,
+      "precision": 0.5976095617529881,
+      "recall": 0.15843675732770002,
+      "f1": 0.25046963055729493,
+      "roc_auc": 0.7250364346854695,
+      "confusion_matrix": [
+        [
+          11177,
+          404
+        ],
+        [
+          3187,
+          600
+        ]
+      ],
+      "confusion_matrix_dict": {
+        "TN": 11177,
+        "FP": 404,
+        "FN": 3187,
+        "TP": 600
+      }
+    },
+    "training_time": 3.8910911083221436,
+    "experiment_log_path": "E:\\Flight-Delay-Prediction\\logs\\experiments\\run_20260210_164533_lr_default.json",
+    "model_path": "E:\\Flight-Delay-Prediction\\models\\logistic_regression\\logistic_regression_model_20260210.joblib",
+    "data_hash": "f223fc9b0ccb7909"
+  },
+  "lr_run2": {
+    "model_type": "logistic_regression",
+    "run_id": 2,
+    "test_metrics": {
+      "accuracy": 0.8391881342701015,
+      "precision": 0.24074074074074073,
+      "recall": 0.022033898305084745,
+      "f1": 0.040372670807453416,
+      "roc_auc": 0.6716652685656526,
+      "confusion_matrix": [
+        [
+          3212,
+          41
+        ],
+        [
+          577,
+          13
+        ]
+      ],
+      "confusion_matrix_dict": {
+        "TN": 3212,
+        "FP": 41,
+        "FN": 577,
+        "TP": 13
+      }
+    },
+    "train_metrics": {
+      "accuracy": 0.7663326392503904,
+      "precision": 0.5976095617529881,
+      "recall": 0.15843675732770002,
+      "f1": 0.25046963055729493,
+      "roc_auc": 0.7250364346854695,
+      "confusion_matrix": [
+        [
+          11177,
+          404
+        ],
+        [
+          3187,
+          600
+        ]
+      ],
+      "confusion_matrix_dict": {
+        "TN": 11177,
+        "FP": 404,
+        "FN": 3187,
+        "TP": 600
+      }
+    },
+    "training_time": 2.555845022201538,
+    "experiment_log_path": "E:\\Flight-Delay-Prediction\\logs\\experiments\\run_20260210_164535_lr_default.json",
+    "model_path": "E:\\Flight-Delay-Prediction\\models\\logistic_regression\\logistic_regression_model_20260210.joblib",
+    "data_hash": "f223fc9b0ccb7909"
+  },
+  "lr_reproducibility": {
+    "model_type": "logistic_regression",
+    "timestamp": "2026-02-10T11:15:35.876367Z",
+    "checks": {
+      "data_hash": {
+        "passed": true,
+        "run1": "f223fc9b0ccb7909",
+        "run2": "f223fc9b0ccb7909"
+      },
+      "metrics": {
+        "passed": true,
+        "max_difference": 0.0,
+        "differences": {
+          "accuracy": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      },
+      "confusion_matrix": {
+        "passed": true,
+        "run1": [
+          [
+            3212,
+            41
+          ],
+          [
+            577,
+            13
+          ]
+        ],
+        "run2": [
+          [
+            3212,
+            41
+          ],
+          [
+            577,
+            13
+          ]
+        ]
+      },
+      "training_time": {
+        "passed": false,
+        "run1": 3.8910911083221436,
+        "run2": 2.555845022201538,
+        "difference_pct": 34.315467023242476
+      }
+    },
+    "reproducible": true
+  },
+  "rf_run1": {
+    "model_type": "random_forest",
+    "run_id": 1,
+    "test_metrics": {
+      "accuracy": 0.8449128285193859,
+      "precision": 0.4375,
+      "recall": 0.03559322033898305,
+      "f1": 0.0658307210031348,
+      "roc_auc": 0.6845628806785913,
+      "confusion_matrix": [
+        [
+          3226,
+          27
+        ],
+        [
+          569,
+          21
+        ]
+      ],
+      "confusion_matrix_dict": {
+        "TN": 3226,
+        "FP": 27,
+        "FN": 569,
+        "TP": 21
+      }
+    },
+    "train_metrics": {
+      "accuracy": 0.7990629880270692,
+      "precision": 0.7789305666400639,
+      "recall": 0.2577237919197254,
+      "f1": 0.38730158730158726,
+      "roc_auc": 0.8273311364026108,
+      "confusion_matrix": [
+        [
+          11304,
+          277
+        ],
+        [
+          2811,
+          976
+        ]
+      ],
+      "confusion_matrix_dict": {
+        "TN": 11304,
+        "FP": 277,
+        "FN": 2811,
+        "TP": 976
+      }
+    },
+    "training_time": 0.8574211597442627,
+    "experiment_log_path": "E:\\Flight-Delay-Prediction\\logs\\experiments\\run_20260210_164537_rf_default.json",
+    "model_path": "E:\\Flight-Delay-Prediction\\models\\random_forest\\random_forest_model_20260210.joblib",
+    "data_hash": "f223fc9b0ccb7909"
+  },
+  "rf_run2": {
+    "model_type": "random_forest",
+    "run_id": 2,
+    "test_metrics": {
+      "accuracy": 0.8449128285193859,
+      "precision": 0.4375,
+      "recall": 0.03559322033898305,
+      "f1": 0.0658307210031348,
+      "roc_auc": 0.6845628806785913,
+      "confusion_matrix": [
+        [
+          3226,
+          27
+        ],
+        [
+          569,
+          21
+        ]
+      ],
+      "confusion_matrix_dict": {
+        "TN": 3226,
+        "FP": 27,
+        "FN": 569,
+        "TP": 21
+      }
+    },
+    "train_metrics": {
+      "accuracy": 0.7990629880270692,
+      "precision": 0.7789305666400639,
+      "recall": 0.2577237919197254,
+      "f1": 0.38730158730158726,
+      "roc_auc": 0.8273311364026108,
+      "confusion_matrix": [
+        [
+          11304,
+          277
+        ],
+        [
+          2811,
+          976
+        ]
+      ],
+      "confusion_matrix_dict": {
+        "TN": 11304,
+        "FP": 277,
+        "FN": 2811,
+        "TP": 976
+      }
+    },
+    "training_time": 0.9365606307983398,
+    "experiment_log_path": "E:\\Flight-Delay-Prediction\\logs\\experiments\\run_20260210_164538_rf_default.json",
+    "model_path": "E:\\Flight-Delay-Prediction\\models\\random_forest\\random_forest_model_20260210.joblib",
+    "data_hash": "f223fc9b0ccb7909"
+  },
+  "rf_reproducibility": {
+    "model_type": "random_forest",
+    "timestamp": "2026-02-10T11:15:38.691837Z",
+    "checks": {
+      "data_hash": {
+        "passed": true,
+        "run1": "f223fc9b0ccb7909",
+        "run2": "f223fc9b0ccb7909"
+      },
+      "metrics": {
+        "passed": true,
+        "max_difference": 0.0,
+        "differences": {
+          "accuracy": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      },
+      "confusion_matrix": {
+        "passed": true,
+        "run1": [
+          [
+            3226,
+            27
+          ],
+          [
+            569,
+            21
+          ]
+        ],
+        "run2": [
+          [
+            3226,
+            27
+          ],
+          [
+            569,
+            21
+          ]
+        ]
+      },
+      "training_time": {
+        "passed": true,
+        "run1": 0.8574211597442627,
+        "run2": 0.9365606307983398,
+        "difference_pct": 9.229941453472126
+      }
+    },
+    "reproducible": true
+  },
+  "model_comparison": {
+    "timestamp": "2026-02-10T11:15:38.691837Z",
+    "models": {
+      "logistic_regression": {
+        "model_type": "logistic_regression",
+        "run_id": 1,
+        "test_metrics": {
+          "accuracy": 0.8391881342701015,
+          "precision": 0.24074074074074073,
+          "recall": 0.022033898305084745,
+          "f1": 0.040372670807453416,
+          "roc_auc": 0.6716652685656526,
+          "confusion_matrix": [
+            [
+              3212,
+              41
+            ],
+            [
+              577,
+              13
+            ]
+          ],
+          "confusion_matrix_dict": {
+            "TN": 3212,
+            "FP": 41,
+            "FN": 577,
+            "TP": 13
+          }
+        },
+        "train_metrics": {
+          "accuracy": 0.7663326392503904,
+          "precision": 0.5976095617529881,
+          "recall": 0.15843675732770002,
+          "f1": 0.25046963055729493,
+          "roc_auc": 0.7250364346854695,
+          "confusion_matrix": [
+            [
+              11177,
+              404
+            ],
+            [
+              3187,
+              600
+            ]
+          ],
+          "confusion_matrix_dict": {
+            "TN": 11177,
+            "FP": 404,
+            "FN": 3187,
+            "TP": 600
+          }
+        },
+        "training_time": 3.8910911083221436,
+        "experiment_log_path": "E:\\Flight-Delay-Prediction\\logs\\experiments\\run_20260210_164533_lr_default.json",
+        "model_path": "E:\\Flight-Delay-Prediction\\models\\logistic_regression\\logistic_regression_model_20260210.joblib",
+        "data_hash": "f223fc9b0ccb7909"
+      },
+      "random_forest": {
+        "model_type": "random_forest",
+        "run_id": 1,
+        "test_metrics": {
+          "accuracy": 0.8449128285193859,
+          "precision": 0.4375,
+          "recall": 0.03559322033898305,
+          "f1": 0.0658307210031348,
+          "roc_auc": 0.6845628806785913,
+          "confusion_matrix": [
+            [
+              3226,
+              27
+            ],
+            [
+              569,
+              21
+            ]
+          ],
+          "confusion_matrix_dict": {
+            "TN": 3226,
+            "FP": 27,
+            "FN": 569,
+            "TP": 21
+          }
+        },
+        "train_metrics": {
+          "accuracy": 0.7990629880270692,
+          "precision": 0.7789305666400639,
+          "recall": 0.2577237919197254,
+          "f1": 0.38730158730158726,
+          "roc_auc": 0.8273311364026108,
+          "confusion_matrix": [
+            [
+              11304,
+              277
+            ],
+            [
+              2811,
+              976
+            ]
+          ],
+          "confusion_matrix_dict": {
+            "TN": 11304,
+            "FP": 277,
+            "FN": 2811,
+            "TP": 976
+          }
+        },
+        "training_time": 0.8574211597442627,
+        "experiment_log_path": "E:\\Flight-Delay-Prediction\\logs\\experiments\\run_20260210_164537_rf_default.json",
+        "model_path": "E:\\Flight-Delay-Prediction\\models\\random_forest\\random_forest_model_20260210.joblib",
+        "data_hash": "f223fc9b0ccb7909"
+      }
+    },
+    "metrics_comparison": {
+      "accuracy": {
+        "lr": 0.8391881342701015,
+        "rf": 0.8449128285193859,
+        "delta": 0.0057246942492843456,
+        "delta_pct": 0.6821705426356508,
+        "winner": "RF"
+      },
+      "precision": {
+        "lr": 0.24074074074074073,
+        "rf": 0.4375,
+        "delta": 0.19675925925925927,
+        "delta_pct": 81.73076923076924,
+        "winner": "RF"
+      },
+      "recall": {
+        "lr": 0.022033898305084745,
+        "rf": 0.03559322033898305,
+        "delta": 0.013559322033898306,
+        "delta_pct": 61.53846153846154,
+        "winner": "RF"
+      },
+      "f1": {
+        "lr": 0.040372670807453416,
+        "rf": 0.0658307210031348,
+        "delta": 0.02545805019568139,
+        "delta_pct": 63.05763202314929,
+        "winner": "RF"
+      },
+      "roc_auc": {
+        "lr": 0.6716652685656526,
+        "rf": 0.6845628806785913,
+        "delta": 0.012897612112938717,
+        "delta_pct": 1.9202440138793668,
+        "winner": "RF"
+      }
+    },
+    "recommendations": [
+      {
+        "severity": "warning",
+        "message": "\u26a0\ufe0f  LR F1 (0.0404) < 0.65 \u2192 Investigate data quality or feature engineering",
+        "action": "Investigate data quality and feature engineering"
+      },
+      {
+        "severity": "info",
+        "message": "\u26a0\ufe0f  RF F1 (0.0658) < 0.75 (IEEE benchmark) \u2192 Investigate, do NOT discard",
+        "action": "Investigate model performance but continue with current model"
+      },
+      {
+        "severity": "warning",
+        "message": "\u26a0\ufe0f  RF improvement (0.0255, 63.1%) < 5pp \u2192 Feature interactions may be missing",
+        "action": "Consider adding interaction features or polynomial terms"
+      }
+    ],
+    "training_time_comparison": {
+      "lr": 3.8910911083221436,
+      "rf": 0.8574211597442627,
+      "rf_lr_ratio": 0.2203549430930664
+    }
+  }
+}

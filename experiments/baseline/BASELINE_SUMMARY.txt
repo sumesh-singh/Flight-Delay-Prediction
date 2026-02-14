@@ -1,0 +1,25 @@
+======================================================================
+BASELINE EXPERIMENTS SUMMARY
+======================================================================
+
+Timestamp: 2026-02-10 19:42:48.917129
+
+REPRODUCIBILITY:
+  Logistic Regression: ✓ VERIFIED
+  Random Forest:       ✓ VERIFIED
+
+PERFORMANCE:
+  LR Test F1:  0.3383
+  RF Test F1:  0.3632
+  Improvement: +0.0249 (+7.4%)
+
+RECOMMENDATIONS:
+  [WARNING] ⚠️  LR F1 (0.3383) < 0.65 → Investigate data quality or feature engineering
+    Action: Investigate data quality and feature engineering
+
+  [INFO] ⚠️  RF F1 (0.3632) < 0.75 (IEEE benchmark) → Investigate, do NOT discard
+    Action: Investigate model performance but continue with current model
+
+  [WARNING] ⚠️  RF improvement (0.0249, 7.4%) < 5pp → Feature interactions may be missing
+    Action: Consider adding interaction features or polynomial terms
+

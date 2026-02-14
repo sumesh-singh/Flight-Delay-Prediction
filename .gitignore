@@ -1,0 +1,126 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Data (large files)
+data/raw/*.csv
+data/raw/*.zip
+data/processed/*.parquet
+data/cache/*
+data/external/*
+data/metadata/*.csv
+
+# Keep APIs.txt credential file (small, important)
+!data/external/APIs.txt
+
+# Keep directory structure but ignore contents
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/cache/.gitkeep
+!data/external/.gitkeep
+
+# Models (large binary files)
+models/**/*.joblib
+models/**/*.pkl
+models/**/*.h5
+models/**/*.ckpt
+models/**/*.json
+
+# Keep model directories but ignore model files
+!models/*/.gitkeep
+
+# Logs
+logs/*.log
+logs/experiments/*
+!logs/.gitkeep
+experiments/*.log
+experiments/multiyear_results_*/
+experiments/*.json
+
+# Environment variables
+.env
+.env.local
+
+# API credentials (if not already in Datasets/)
+**/APIs.txt
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+CONFIG_FIXES.md
+DATA_CLEANSER_BUGFIXES.md
+DATA_CLEANSER_GUIDE.md
+DATA_COLLECTION_BUGFIXES.md
+DATA_COLLECTION_GUIDE.md
+DATA_SETUP.md
+DATA_VALIDATION_GUIDE.md
+DATA_VALIDATION_SUMMARY.md
+FEATURE_ENGINEERING_BUGFIXES.md
+FEATURE_ENGINEERING_GUIDE.md
+MODEL_DESIGN.md
+MODEL_INTEGRATION_CHECKLIST.md
+MODEL_TRAINING_GUIDE.md
+PROJECT_STRUCTURE.md
+TARGET_GENERATION_GUIDE.md
+TARGET_GENERATOR_BUGFIXES.md
+ContextDocuments/implementation_guide.md
+ContextDocuments/product_requirements_document.md
+ContextDocuments/README.md
+ContextDocuments/abstract.docx
+ContextDocuments/Flight_Delay_Prediction_A_Dissecting_Review_of_Recent_Studies_Using_Machine_Learning (1).pdf
+data/raw/2024/readme.html
+data/raw/2023/readme.html
+data/raw/
