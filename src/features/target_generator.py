@@ -291,19 +291,31 @@ class TargetGenerator:
 
         return targets
 
-    def get_target_info(self) -> dict:
-        """
-        Get configuration information about target generation
-
-        Returns:
-            Dictionary with target configuration details
-        """
         return {
             "binary_threshold": self.binary_threshold,
             "multiclass_bins": self.multiclass_bins,
             "multiclass_labels": self.multiclass_labels,
             "target_types": ["IS_DELAYED", "DELAY_CATEGORY", "ARR_DELAY"],
         }
+
+    def create_target_variables(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create target variable (IS_DELAYED) and add to DataFrame.
+        Used by memory-optimized runner.
+
+        Args:
+            df: Input DataFrame with ARR_DELAY
+
+        Returns:
+            DataFrame with IS_DELAYED column added
+        """
+        # Create binary target
+        target = self.create_binary_target(df, "ARR_DELAY")
+
+        # Add to DataFrame (modify in-place if possible, but assign new column)
+        df["IS_DELAYED"] = target
+
+        return df
 
 
 def prepare_training_data(

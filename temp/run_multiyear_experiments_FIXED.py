@@ -16,8 +16,7 @@ from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import gc
 import warnings
-
-warnings.filterwarnings("ignore")
+warnings.filterwarnings('ignore')
 
 # Add project root
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -33,11 +32,11 @@ class MemoryOptimizedExperimentRunner:
     MEMORY-OPTIMIZED experiment runner with CLASS BALANCING.
     Processes data in chunks to avoid memory overflow.
     """
-
+    
     def __init__(self, chunk_size: int = 1_000_000):
         """
         Initialize runner.
-
+        
         Args:
             chunk_size: Number of rows to process at once
         """
@@ -45,7 +44,7 @@ class MemoryOptimizedExperimentRunner:
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.output_dir = Path(f"experiments/multiyear_results_{self.timestamp}")
         self.output_dir.mkdir(parents=True, exist_ok=True)
-
+        
         print("=" * 70)
         print("MEMORY-OPTIMIZED MULTI-YEAR FLIGHT DELAY PREDICTION")
         print("=" * 70)
@@ -70,7 +69,7 @@ class MemoryOptimizedExperimentRunner:
             "Diverted": "DIVERTED",
             "Distance": "DISTANCE",
         }
-
+        
         df = df.rename(columns=column_mapping)
         return df
 
@@ -80,45 +79,45 @@ class MemoryOptimizedExperimentRunner:
         return df
 
     def process_chunk_to_features(
-        self,
-        chunk: pd.DataFrame,
+        self, 
+        chunk: pd.DataFrame, 
         engineer: FeatureEngineer,
         target_gen: TargetGenerator,
-        fit: bool = False,
+        fit: bool = False
     ) -> tuple:
         """
         Process a single chunk through full pipeline.
-
+        
         Args:
             chunk: Raw data chunk
             engineer: FeatureEngineer instance
             target_gen: TargetGenerator instance
             fit: Whether to fit encoders (training only)
-
+            
         Returns:
             (X_chunk, y_chunk) ready for training
         """
         # Normalize
         chunk = self.normalize_bts_schema(chunk)
-
+        
         # Clean
         chunk = self.simple_clean(chunk)
-
+        
         if len(chunk) == 0:
             return None, None
-
+        
         # Create target
         chunk = target_gen.create_target_variables(chunk)
-
+        
         # Engineer features
         chunk = engineer.create_all_features(chunk, fit_encoders=fit)
-
+        
         # Select features
-        X, y = engineer.select_features_for_training(chunk, target_col="IS_DELAYED")
-
+        X, y = engineer.select_features_for_training(chunk, target_col='IS_DELAYED')
+        
         # Handle NaN
         X = X.fillna(0)
-
+        
         return X, y
 
     def train_with_chunks(self):
@@ -129,124 +128,97 @@ class MemoryOptimizedExperimentRunner:
         print("\n" + "=" * 70)
         print("STEP 1: CHUNKED TRAINING WITH CLASS BALANCING")
         print("=" * 70)
-
+        
         # Initialize components
         loader = MultiYearDataLoader()
         engineer = FeatureEngineer()
         target_gen = TargetGenerator()
-
-        # ADDED: StandardScaler (Critical for SGD)
-        from sklearn.preprocessing import StandardScaler
-
-        scaler = StandardScaler()
-
-        # CRITICAL FIX: Use manual sample weights instead of class_weight='balanced'
-        # (class_weight='balanced' is not supported with partial_fit in this version)
+        
+        # CRITICAL FIX: Added class_weight='balanced'
         model = SGDClassifier(
-            loss="log_loss",
-            penalty="l2",
+            loss='log_loss',  # Logistic regression
+            penalty='l2',
             alpha=0.0001,
             max_iter=1000,
-            # class_weight='balanced',  # REMOVED: Causes error with partial_fit
+            class_weight='balanced',  # FIXES RECALL=0 ISSUE
             random_state=42,
-            n_jobs=-1,
+            n_jobs=-1
         )
-
+        
         feature_names = None
         chunk_num = 0
         total_samples = 0
-
+        
         # Track class distribution
         total_delayed = 0
         total_ontime = 0
-
+        
         # Training: 2023-2024
         years = [2023, 2024]
-
-        from sklearn.utils.class_weight import compute_sample_weight
-
+        
         for year in years:
             print(f"\nProcessing year {year}...")
             csv_files = loader.get_available_files(year)
-
+            
             for csv_file in csv_files:
                 print(f"\n  Loading {csv_file.name}...")
-
+                
                 # Read in chunks
-                for chunk_df in pd.read_csv(
-                    csv_file, chunksize=self.chunk_size, low_memory=False
-                ):
+                for chunk_df in pd.read_csv(csv_file, chunksize=self.chunk_size, low_memory=False):
                     chunk_num += 1
                     print(f"    Chunk {chunk_num}: {len(chunk_df):,} rows", end=" -> ")
-
+                    
                     # Process chunk
                     X_chunk, y_chunk = self.process_chunk_to_features(
-                        chunk_df,
-                        engineer,
+                        chunk_df, 
+                        engineer, 
                         target_gen,
-                        fit=(chunk_num == 1),  # Only fit encoders on first chunk
+                        fit=(chunk_num == 1)  # Only fit encoders on first chunk
                     )
-
+                    
                     if X_chunk is None or len(X_chunk) == 0:
                         print("Skipped (empty after cleaning)")
                         continue
-
+                    
                     # Store feature names from first chunk
                     if feature_names is None:
                         feature_names = X_chunk.columns.tolist()
                     else:
                         # Ensure consistent columns
                         X_chunk = X_chunk.reindex(columns=feature_names, fill_value=0)
-
+                    
                     # Track class distribution
                     total_delayed += y_chunk.sum()
                     total_ontime += (1 - y_chunk).sum()
-
-                    # SCALE FEATURES (Incremental)
-                    scaler.partial_fit(X_chunk)
-                    X_scaled = scaler.transform(X_chunk)
-
-                    # Compute sample weights for balancing (approximate per chunk)
-                    # This replaces class_weight='balanced'
-                    weights = compute_sample_weight(class_weight="balanced", y=y_chunk)
-
-                    # Incremental fit with weights
-                    model.partial_fit(
-                        X_scaled, y_chunk, classes=[0, 1], sample_weight=weights
-                    )
+                    
+                    # Incremental fit
+                    model.partial_fit(X_chunk, y_chunk, classes=[0, 1])
                     total_samples += len(X_chunk)
-
+                    
                     delay_rate = y_chunk.mean()
-                    print(
-                        f"Trained on {len(X_chunk):,} samples (Delay rate: {delay_rate:.1%}, Total: {total_samples:,})"
-                    )
-
+                    print(f"Trained on {len(X_chunk):,} samples (Delay rate: {delay_rate:.1%}, Total: {total_samples:,})")
+                    
                     # Clean up
-                    del chunk_df, X_chunk, X_scaled, y_chunk
+                    del chunk_df, X_chunk, y_chunk
                     gc.collect()
-
+        
         print(f"\n{'=' * 70}")
         print(f"TRAINING COMPLETE")
         print(f"Total samples processed: {total_samples:,}")
         print(f"Class distribution:")
-        print(
-            f"  On-Time: {total_ontime:,} ({total_ontime / total_samples * 100:.1f}%)"
-        )
-        print(
-            f"  Delayed: {total_delayed:,} ({total_delayed / total_samples * 100:.1f}%)"
-        )
+        print(f"  On-Time: {total_ontime:,} ({total_ontime/total_samples*100:.1f}%)")
+        print(f"  Delayed: {total_delayed:,} ({total_delayed/total_samples*100:.1f}%)")
         print(f"Features: {len(feature_names)}")
         print(f"{'=' * 70}")
-
-        return model, engineer, target_gen, scaler, feature_names
+        
+        return model, engineer, target_gen, feature_names
 
     def evaluate_on_test_data(
-        self,
-        model,
+        self, 
+        model, 
         engineer: FeatureEngineer,
         target_gen: TargetGenerator,
-        scaler,  # Added scaler
-        feature_names: list,
+        feature_names: list
     ):
         """
         Evaluate model on 2025 test data (processed in chunks).
@@ -254,68 +226,62 @@ class MemoryOptimizedExperimentRunner:
         print("\n" + "=" * 70)
         print("STEP 2: EVALUATING ON 2025 TEST DATA")
         print("=" * 70)
-
+        
         loader = MultiYearDataLoader()
-
+        
         all_y_true = []
         all_y_pred = []
         chunk_num = 0
-
+        
         # Test: 2025 Jan-Nov
         csv_files = loader.get_available_files(2025)[:11]  # Jan-Nov
-
+        
         for csv_file in csv_files:
             print(f"\nEvaluating {csv_file.name}...")
-
-            for chunk_df in pd.read_csv(
-                csv_file, chunksize=self.chunk_size, low_memory=False
-            ):
+            
+            for chunk_df in pd.read_csv(csv_file, chunksize=self.chunk_size, low_memory=False):
                 chunk_num += 1
-
+                
                 # Process chunk
                 X_chunk, y_chunk = self.process_chunk_to_features(
                     chunk_df,
                     engineer,
                     target_gen,
-                    fit=False,  # Don't refit encoders
+                    fit=False  # Don't refit encoders
                 )
-
+                
                 if X_chunk is None or len(X_chunk) == 0:
                     continue
-
+                
                 # Ensure consistent columns
                 X_chunk = X_chunk.reindex(columns=feature_names, fill_value=0)
-
-                # SCALE FEATURES (Use trained scaler)
-                X_scaled = scaler.transform(X_chunk)
-
+                
                 # Predict
-                y_pred = model.predict(X_scaled)
-
+                y_pred = model.predict(X_chunk)
+                
                 all_y_true.extend(y_chunk.tolist())
                 all_y_pred.extend(y_pred.tolist())
-
+                
                 print(f"  Chunk {chunk_num}: {len(X_chunk):,} samples evaluated")
-
+                
                 # Clean up
-                del chunk_df, X_chunk, X_scaled, y_chunk, y_pred
+                del chunk_df, X_chunk, y_chunk, y_pred
                 gc.collect()
-
+        
         # Calculate final metrics
         y_true = np.array(all_y_true)
         y_pred = np.array(all_y_pred)
-
+        
         accuracy = accuracy_score(y_true, y_pred)
         precision = precision_score(y_true, y_pred, zero_division=0)
         recall = recall_score(y_true, y_pred, zero_division=0)
         f1 = f1_score(y_true, y_pred, zero_division=0)
-
+        
         # Confusion matrix
         from sklearn.metrics import confusion_matrix
-
         cm = confusion_matrix(y_true, y_pred)
         tn, fp, fn, tp = cm.ravel()
-
+        
         print(f"\n{'=' * 70}")
         print("OVERALL PERFORMANCE (2025 Test Set)")
         print(f"{'=' * 70}")
@@ -330,34 +296,30 @@ class MemoryOptimizedExperimentRunner:
         print(f"  False Negatives (Delayed predicted as On-Time): {fn:,}")
         print(f"  True Positives (Delayed correctly predicted):   {tp:,}")
         print(f"\nPrediction Distribution:")
-        print(
-            f"  Predicted On-Time: {(y_pred == 0).sum():,} ({(y_pred == 0).sum() / len(y_pred) * 100:.1f}%)"
-        )
-        print(
-            f"  Predicted Delayed: {(y_pred == 1).sum():,} ({(y_pred == 1).sum() / len(y_pred) * 100:.1f}%)"
-        )
+        print(f"  Predicted On-Time: {(y_pred == 0).sum():,} ({(y_pred == 0).sum()/len(y_pred)*100:.1f}%)")
+        print(f"  Predicted Delayed: {(y_pred == 1).sum():,} ({(y_pred == 1).sum()/len(y_pred)*100:.1f}%)")
         print(f"{'=' * 70}")
-
+        
         # Save results
         results = {
-            "n_samples": int(len(y_true)),
-            "accuracy": float(accuracy),
-            "precision": float(precision),
-            "recall": float(recall),
-            "f1_score": float(f1),
-            "confusion_matrix": {
-                "true_negatives": int(tn),
-                "false_positives": int(fp),
-                "false_negatives": int(fn),
-                "true_positives": int(tp),
-            },
+            'n_samples': int(len(y_true)),
+            'accuracy': float(accuracy),
+            'precision': float(precision),
+            'recall': float(recall),
+            'f1_score': float(f1),
+            'confusion_matrix': {
+                'true_negatives': int(tn),
+                'false_positives': int(fp),
+                'false_negatives': int(fn),
+                'true_positives': int(tp)
+            }
         }
-
-        with open(self.output_dir / "results.json", "w") as f:
+        
+        with open(self.output_dir / 'results.json', 'w') as f:
             json.dump(results, f, indent=2)
-
+        
         print(f"\nResults saved to {self.output_dir / 'results.json'}")
-
+        
         return results
 
 
@@ -367,15 +329,13 @@ def main():
     """
     # MEMORY OPTIMIZATION: Process 1M rows at a time
     runner = MemoryOptimizedExperimentRunner(chunk_size=1_000_000)
-
+    
     # Train model incrementally
-    model, engineer, target_gen, scaler, feature_names = runner.train_with_chunks()
-
+    model, engineer, target_gen, feature_names = runner.train_with_chunks()
+    
     # Evaluate on test data
-    results = runner.evaluate_on_test_data(
-        model, engineer, target_gen, scaler, feature_names
-    )
-
+    results = runner.evaluate_on_test_data(model, engineer, target_gen, feature_names)
+    
     print("\n" + "=" * 70)
     print("EXPERIMENT COMPLETE")
     print("=" * 70)
