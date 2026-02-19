@@ -2,6 +2,7 @@
 Feature Adapter for Inference-Time Feature Computation
 
 Bridges user inputs → training feature space
+Supports all 45 features from the unified training pipeline.
 """
 
 import sys
@@ -12,6 +13,7 @@ from datetime import datetime, time
 from typing import Dict, Any, List
 import json
 import pickle
+import joblib
 
 # Add project root
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -27,7 +29,7 @@ class FeatureAdapter:
         Initialize feature adapter.
 
         Args:
-            model_type: 'logistic_regression' or 'random_forest'
+            model_type: 'logistic_regression', 'random_forest', or 'sgd_classifier'
         """
         self.model_type = model_type
         self.model_dir = Path(f"models/{model_type}")
@@ -36,6 +38,7 @@ class FeatureAdapter:
         self.feature_order = self._load_feature_order()
         self.label_encoders = self._load_label_encoders()
         self.historical_stats = self._load_historical_stats()
+        self.scaler = self._load_scaler()
 
     def _load_feature_order(self) -> List[str]:
         """Load feature order from training."""
@@ -66,6 +69,13 @@ class FeatureAdapter:
         with open(stats_path, "r") as f:
             return json.load(f)
 
+    def _load_scaler(self):
+        """Load the fitted StandardScaler."""
+        scaler_files = list(self.model_dir.glob(f"{self.model_type}_scaler_*.joblib"))
+        if not scaler_files:
+            return None
+        return joblib.load(scaler_files[0])
+
     def compute_temporal_features(
         self, flight_date: datetime.date, dep_time: int
     ) -> Dict[str, float]:
@@ -79,12 +89,11 @@ class FeatureAdapter:
         Returns:
             Dictionary of temporal features
         """
-        # Extract components
         hour = dep_time // 100
-        minute = dep_time % 100
         month = flight_date.month
         day_of_week = flight_date.weekday()  # 0=Monday, 6=Sunday
         day_of_month = flight_date.day
+        quarter = (month - 1) // 3 + 1
 
         # Cyclical encoding
         hour_sin = np.sin(2 * np.pi * hour / 24)
@@ -97,23 +106,53 @@ class FeatureAdapter:
         # Binary flags
         is_weekend = 1 if day_of_week >= 5 else 0
         is_peak_hour = 1 if hour in [7, 8, 9, 17, 18, 19] else 0
+        is_late_night = 1 if (hour >= 22 or hour <= 5) else 0
 
-        # Season (approximate)
-        season = (month % 12 + 3) // 3  # 1=Spring, 2=Summer, 3=Fall, 4=Winter
+        # Holiday proximity check (simplified — major US holidays)
+        major_holidays = [
+            (1, 1),
+            (1, 15),
+            (2, 19),
+            (5, 27),
+            (7, 4),
+            (9, 2),
+            (10, 14),
+            (11, 11),
+            (11, 28),
+            (12, 25),
+            (12, 31),
+        ]
+        is_near_holiday = 0
+        for h_month, h_day in major_holidays:
+            try:
+                from datetime import date as dt_date
+
+                h_date = dt_date(flight_date.year, h_month, h_day)
+                if abs((flight_date - h_date).days) <= 3:
+                    is_near_holiday = 1
+                    break
+            except ValueError:
+                continue
 
         return {
             "month": month,
+            "Month": month,
             "day_of_week": day_of_week,
-            "day_of_month": day_of_month,
+            "DayOfWeek": day_of_week + 1,  # BTS uses 1-indexed
+            "day": day_of_month,
+            "DayofMonth": day_of_month,
+            "hour": hour,
+            "quarter": quarter,
             "hour_sin": hour_sin,
             "hour_cos": hour_cos,
-            "day_of_week_sin": dow_sin,
-            "day_of_week_cos": dow_cos,
+            "dow_sin": dow_sin,
+            "dow_cos": dow_cos,
             "month_sin": month_sin,
             "month_cos": month_cos,
             "is_weekend": is_weekend,
             "is_peak_hour": is_peak_hour,
-            "season": season,
+            "is_near_holiday": is_near_holiday,
+            "is_late_night_op": is_late_night,
         }
 
     def lookup_historical_features(
@@ -131,65 +170,66 @@ class FeatureAdapter:
             Dictionary of historical features
         """
         features = {}
+        global_avg = self.historical_stats.get("global_avg_delay", 0.0)
+        global_std = self.historical_stats.get("global_std_delay", 30.0)
+        global_rate = self.historical_stats.get("global_delay_rate", 0.18)
 
         # Carrier features
-        carrier_avg = self.historical_stats.get(
-            f"carrier_{carrier}_avg_delay",
-            self.historical_stats.get("global_avg_delay", 0.0),
+        features["carrier_avg_arr_delay"] = self.historical_stats.get(
+            f"carrier_{carrier}_avg_delay", global_avg
         )
-        carrier_std = self.historical_stats.get(
-            f"carrier_{carrier}_std_delay",
-            self.historical_stats.get("global_std_delay", 0.0),
+        features["carrier_arr_delay_std"] = self.historical_stats.get(
+            f"carrier_{carrier}_std_delay", global_std
         )
-        carrier_rate = self.historical_stats.get(
-            f"carrier_{carrier}_delay_rate",
-            self.historical_stats.get("global_delay_rate", 0.0),
+        features["carrier_delay_rate"] = self.historical_stats.get(
+            f"carrier_{carrier}_delay_rate", global_rate
         )
-
-        features["carrier_avg_arr_delay"] = carrier_avg
-        features["carrier_arr_delay_std"] = carrier_std
-        features["carrier_delay_rate"] = carrier_rate
-        features["carrier_avg_dep_delay"] = carrier_avg
+        features["carrier_avg_dep_delay"] = features["carrier_avg_arr_delay"]
 
         # Route features
         route_key = f"route_{origin}_{dest}"
         features["route_avg_delay"] = self.historical_stats.get(
-            f"{route_key}_avg_delay", self.historical_stats.get("global_avg_delay", 0.0)
+            f"{route_key}_avg_delay", global_avg
         )
         features["route_delay_rate"] = self.historical_stats.get(
-            f"{route_key}_delay_rate",
-            self.historical_stats.get("global_delay_rate", 0.0),
+            f"{route_key}_delay_rate", global_rate
         )
+        features["route_avg_distance"] = 800  # approximate median
 
         # Airport features
-        origin_count = self.historical_stats.get(f"origin_{origin}_flight_count", 100)
-        dest_count = self.historical_stats.get(f"origin_{dest}_flight_count", 100)
-
-        features["origin_flight_count"] = origin_count
-        features["dest_flight_count"] = dest_count
-
-        # Size categories (based on flight count)
-        features["origin_size_category"] = (
-            2 if origin_count > 500 else (1 if origin_count > 100 else 0)
+        features["origin_flight_count"] = self.historical_stats.get(
+            f"origin_{origin}_flight_count", 100
         )
-        features["dest_size_category"] = (
-            2 if dest_count > 500 else (1 if dest_count > 100 else 0)
+        features["dest_flight_count"] = self.historical_stats.get(
+            f"origin_{dest}_flight_count", 100
+        )
+        features["origin_delay_rate"] = self.historical_stats.get(
+            f"origin_{origin}_delay_rate", global_rate
+        )
+        features["dest_delay_rate"] = self.historical_stats.get(
+            f"origin_{dest}_delay_rate", global_rate
         )
 
         return features
 
-    def compute_network_features(self) -> Dict[str, float]:
+    def compute_human_factors_features(self, dep_time: int) -> Dict[str, float]:
         """
-        Compute network features (unavailable at inference - use safe defaults).
+        Compute human factors features with safe defaults.
+        These are unknowable at booking time, so we use population averages.
+        """
+        hour = dep_time // 100
+        is_late_night = 1 if (hour >= 22 or hour <= 5) else 0
 
-        Returns:
-            Dictionary of network features with safe defaults
-        """
         return {
-            "prev_flight_delay": SAFE_DEFAULTS["prev_flight_delay"],
-            "turnaround_time": SAFE_DEFAULTS["turnaround_time"],
-            "turnaround_stress": SAFE_DEFAULTS["turnaround_stress"],
-            "same_day_carrier_delays": SAFE_DEFAULTS["same_day_carrier_delays"],
+            "aircraft_daily_legs": SAFE_DEFAULTS.get("aircraft_daily_legs", 3),
+            "aircraft_leg_number": SAFE_DEFAULTS.get("aircraft_leg_number", 2),
+            "crew_fatigue_index": SAFE_DEFAULTS.get("crew_fatigue_index", 0.5),
+            "is_late_night_op": is_late_night,
+            "origin_hourly_density": SAFE_DEFAULTS.get("origin_hourly_density", 10),
+            "dest_hourly_density": SAFE_DEFAULTS.get("dest_hourly_density", 10),
+            "aircraft_daily_util_min": SAFE_DEFAULTS.get(
+                "aircraft_daily_util_min", 300
+            ),
         }
 
     def create_inference_features(
@@ -212,25 +252,22 @@ class FeatureAdapter:
             carrier: Airline code
             origin: Origin airport code
             dest: Destination airport code
-            distance: Route distance (optional, median used if missing)
+            distance: Route distance (optional, 800 used if missing)
 
         Returns:
-            DataFrame with 1 row and all training features in correct order
+            DataFrame with 1 row, scaled and in correct feature order
         """
         features = {}
 
         # Direct inputs
         features["CRS_DEP_TIME"] = dep_time
         features["CRS_ARR_TIME"] = arr_time
-        features["CANCELLED"] = 0
-        features["DIVERTED"] = 0
 
-        # Distance (use median if not provided)
+        # Distance
         if distance is None:
-            distance = 800  # median approx
+            distance = 800
         features["DISTANCE"] = distance
-        features["route_distance"] = distance
-        features["route_distance_normalized"] = distance / 3000  # normalize
+        features["DistanceGroup"] = min(int(distance / 250) + 1, 11)
 
         # Temporal features
         temporal = self.compute_temporal_features(flight_date, dep_time)
@@ -241,41 +278,30 @@ class FeatureAdapter:
         features.update(historical)
 
         # Network features (safe defaults)
-        network = self.compute_network_features()
-        features.update(network)
+        features["prev_flight_delay"] = SAFE_DEFAULTS.get("prev_flight_delay", 0)
+        features["turnaround_stress"] = SAFE_DEFAULTS.get("turnaround_stress", 0)
+
+        # Human factors features
+        human = self.compute_human_factors_features(dep_time)
+        features.update(human)
 
         # Encode categorical features
-        if "OP_CARRIER" in self.label_encoders:
-            try:
-                features["OP_CARRIER_encoded"] = self.label_encoders[
-                    "OP_CARRIER"
-                ].transform([carrier])[0]
-            except:
-                features["OP_CARRIER_encoded"] = 0  # Unknown carrier
-        else:
-            features["OP_CARRIER_encoded"] = 0
+        for col_name in ["OP_CARRIER", "ORIGIN", "DEST"]:
+            input_val = {"OP_CARRIER": carrier, "ORIGIN": origin, "DEST": dest}[
+                col_name
+            ]
+            encoded_name = f"{col_name}_encoded"
+            if col_name in self.label_encoders:
+                try:
+                    features[encoded_name] = int(
+                        self.label_encoders[col_name].transform([input_val])[0]
+                    )
+                except (ValueError, KeyError):
+                    features[encoded_name] = 0
+            else:
+                features[encoded_name] = 0
 
-        if "ORIGIN" in self.label_encoders:
-            try:
-                features["ORIGIN_encoded"] = self.label_encoders["ORIGIN"].transform(
-                    [origin]
-                )[0]
-            except:
-                features["ORIGIN_encoded"] = 0
-        else:
-            features["ORIGIN_encoded"] = 0
-
-        if "DEST" in self.label_encoders:
-            try:
-                features["DEST_encoded"] = self.label_encoders["DEST"].transform(
-                    [dest]
-                )[0]
-            except:
-                features["DEST_encoded"] = 0
-        else:
-            features["DEST_encoded"] = 0
-
-        # Weather features (set to median/mean values - unavailable at inference)
+        # Weather features (benign defaults — unavailable at booking time)
         features["ORIGIN_TMAX"] = 70.0
         features["ORIGIN_PRCP"] = 0.0
         features["ORIGIN_AWND"] = 5.0
@@ -285,26 +311,34 @@ class FeatureAdapter:
         features["DEST_AWND"] = 5.0
         features["DEST_SNOW"] = 0.0
 
-        # Traffic feature (unavailable at inference)
-        features["ORIGIN_AIRPORT_TRAFFIC"] = 0
+        # Traffic feature
+        features["ORIGIN_AIRPORT_TRAFFIC"] = SAFE_DEFAULTS.get(
+            "ORIGIN_AIRPORT_TRAFFIC", 0
+        )
 
-        # Create DataFrame with exact feature order
+        # Create DataFrame
         df = pd.DataFrame([features])
 
-        # Reorder columns to match training
+        # Fill any missing features with 0
         missing_features = [f for f in self.feature_order if f not in df.columns]
         if missing_features:
-            print(f"Warning: Missing features: {missing_features}")
             for f in missing_features:
                 df[f] = 0
 
+        # Reorder to match training
         df = df[self.feature_order]
+
+        # Apply scaler if available
+        if self.scaler is not None:
+            df = pd.DataFrame(
+                self.scaler.transform(df),
+                columns=self.feature_order,
+            )
 
         # Validate
         assert len(df.columns) == len(self.feature_order), (
             f"Feature count mismatch: {len(df.columns)} vs {len(self.feature_order)}"
         )
-        assert list(df.columns) == self.feature_order, "Feature order mismatch"
         assert not df.isnull().any().any(), "NaN values detected in features"
 
         return df

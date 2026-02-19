@@ -4,12 +4,14 @@ Centralizes all data-related parameters for the Flight Delay Prediction System
 """
 
 from pathlib import Path
+import json
 
 # ============================================================================
 # PROJECT ROOT & PATHS
 # ============================================================================
 
 PROJECT_ROOT = Path(__file__).parent.parent
+CONFIG_DIR = PROJECT_ROOT / "config"
 DATA_DIR = PROJECT_ROOT / "data"
 
 # Data subdirectories
@@ -86,6 +88,20 @@ AIRPORT_METADATA_URLS = {
     "runways": f"{OURAIRPORTS_BASE_URL}runways.csv",
     "countries": f"{OURAIRPORTS_BASE_URL}countries.csv",
 }
+
+# ============================================================================
+# TRAFFIC DATA CONFIGURATION
+# ============================================================================
+
+# Load stations from JSON if available
+STATIONS_FILE = CONFIG_DIR / "stations.json"
+REQUIRED_AIRPORTS = []
+if STATIONS_FILE.exists():
+    try:
+        with open(STATIONS_FILE, "r") as f:
+            REQUIRED_AIRPORTS = json.load(f)
+    except Exception as e:
+        print(f"Warning: Could not load stations from {STATIONS_FILE}: {e}")
 
 # ============================================================================
 # API CONFIGURATION

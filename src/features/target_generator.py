@@ -291,13 +291,6 @@ class TargetGenerator:
 
         return targets
 
-        return {
-            "binary_threshold": self.binary_threshold,
-            "multiclass_bins": self.multiclass_bins,
-            "multiclass_labels": self.multiclass_labels,
-            "target_types": ["IS_DELAYED", "DELAY_CATEGORY", "ARR_DELAY"],
-        }
-
     def create_target_variables(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Create target variable (IS_DELAYED) and add to DataFrame.

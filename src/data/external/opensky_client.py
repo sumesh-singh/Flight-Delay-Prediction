@@ -10,19 +10,27 @@ import requests
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Union
+from tqdm import tqdm
 
 try:
     from config.api_config import OPENSKY_CREDENTIALS
-    from config.data_config import EXTERNAL_DATA_DIR
+    from config.data_config import EXTERNAL_DATA_DIR, REQUIRED_AIRPORTS
 except ImportError:
     import sys
 
     sys.path.append(str(Path(__file__).parents[3]))
     from config.api_config import OPENSKY_CREDENTIALS
-    from config.data_config import EXTERNAL_DATA_DIR
+    from config.data_config import EXTERNAL_DATA_DIR, REQUIRED_AIRPORTS
+
+
+class OpenSkyRateLimitError(Exception):
+    """Raised when OpenSky API rate limit is exceeded."""
+
+    pass
 
 
 class OpenSkyClient:
+    BASE_URL = "https://opensky-network.org/api"
     TOKEN_URL = "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token"
 
     def __init__(self, cache_dir: Optional[Path] = None):
@@ -36,7 +44,7 @@ class OpenSkyClient:
         self.token_expiry = 0
 
         if cache_dir is None:
-            self.cache_dir = EXTERNAL_DATA_DIR / "traffic"
+            self.cache_dir = EXTERNAL_DATA_DIR / "traffic-real"
         else:
             self.cache_dir = cache_dir
 
@@ -94,24 +102,22 @@ class OpenSkyClient:
             response = requests.get(url, headers=headers, params=params, timeout=15)
 
             if response.status_code == 429:
-                print("Rate limit exceeded. Waiting 60s...")
-                time.sleep(60)
-                return []
+                print("Rate limit exceeded. Stopping execution to respect limits.")
+                raise OpenSkyRateLimitError("Rate limit exceeded")
 
-            # Handle Token Expiry / 401 gracefully via recursion?
-            # For now just fail-fast to avoid loops.
+            # Handle Token Expiry / 401 gracefully
             if response.status_code == 401:
                 print(
                     "401 Unauthorized with Token. It might be expired or scope is wrong."
                 )
-                return []
+                return None  # Return None to indicate failure
 
             response.raise_for_status()
             return response.json()
 
         except requests.exceptions.RequestException as e:
             print(f"Error fetching data from {url}: {e}")
-            return []
+            return None  # Return None to indicate failure
 
     def fetch_airport_traffic_hour(
         self, icao_code: str, date_hour: datetime, mode: str = "departure"
@@ -140,6 +146,8 @@ class OpenSkyClient:
                 df_cache.index = pd.to_datetime(df_cache.index)
 
             if date_hour in df_cache.index:
+                # We can print a small debug message or just return silently
+                # print(f"  [Cache Hit] {icao_code}")
                 return df_cache.loc[date_hour, "count"]
 
         # If not cached, we need to fetch the whole day (to be efficient)
@@ -152,8 +160,12 @@ class OpenSkyClient:
         endpoint = f"/flights/{mode}"
         params = {"airport": icao_code, "begin": start_ts, "end": end_ts}
 
-        print(f"Fetching {mode}s for {icao_code} on {date_str}...")
+        # print(f"Fetching {mode}s for {icao_code} on {date_str}...")
         flights = self._make_request(endpoint, params)
+
+        if flights is None:
+            # Request failed (404, 401, or other error), do NOT cache
+            return -1
 
         # Process and cache the day's data
         # We need to count flights per hour
@@ -192,6 +204,38 @@ class OpenSkyClient:
         # Return specific hour
         return hourly_counts.get(date_hour, 0)
 
+    def fetch_all_required_stations(
+        self, date_hour: datetime, mode: str = "departure"
+    ) -> Dict[str, int]:
+        """
+        Fetch traffic data for all required airports defined in config.
+        """
+        results = {}
+        print(f"Fetching {mode} data for {len(REQUIRED_AIRPORTS)} required stations...")
+
+        # Use tqdm for progress bar if available, else standard iterator
+        iterator = tqdm(REQUIRED_AIRPORTS, desc="Fetching stations")
+
+        for icao in iterator:
+            try:
+                if len(icao) != 4:
+                    continue
+
+                count = self.fetch_airport_traffic_hour(icao, date_hour, mode)
+                if count >= 0:
+                    results[icao] = count
+            except OpenSkyRateLimitError:
+                print(f"\n🛑 Rate limit reached while fetching {icao}.")
+                print(
+                    "Progress has been saved via cache. Run the script again later to resume."
+                )
+                break
+            except Exception as e:
+                print(f"Error fetching {icao}: {e}")
+                results[icao] = -1
+
+        return results
+
     def get_traffic_features(
         self, icao_code: str, flight_time: datetime
     ) -> Dict[str, float]:
@@ -217,18 +261,28 @@ class OpenSkyClient:
 
 
 if __name__ == "__main__":
-    # Test Client
     client = OpenSkyClient()
 
-    # Test: JFK Departures for a specific hour in the past (e.g. yesterday noon)
-    # Note: OpenSky history might be limited depending on plan.
-    # We'll try a recent date.
-    test_date = datetime.now() - timedelta(days=2)  # 2 days ago
+    # Test date (5 days ago)
+    test_date = datetime.now() - timedelta(days=5)
     test_date = test_date.replace(hour=12, minute=0, second=0, microsecond=0)
 
-    icao = "KJFK"
-    print(f"Fetching traffic for {icao} at {test_date}...")
+    # Check if we have required airports
+    if REQUIRED_AIRPORTS:
+        print(f"Found {len(REQUIRED_AIRPORTS)} required airports.")
+        # Fetch for all
+        traffic_data = client.fetch_all_required_stations(test_date)
+        print(f"Fetched data for {len(traffic_data)} airports.")
 
-    count = client.fetch_airport_traffic_hour(icao, test_date, "departure")
-    print(f"Departures: {count}")
-    print(f"Cached to: {client.cache_dir}")
+        # Show stats
+        successful = sum(1 for v in traffic_data.values() if v >= 0)
+        print(f"Successfully fetched {successful}/{len(traffic_data)} stations.")
+
+        # Show sample
+        sample_keys = list(traffic_data.keys())[:5]
+        for k in sample_keys:
+            print(f"{k}: {traffic_data[k]}")
+    else:
+        print("No required airports found in config. Testing with KJFK.")
+        count = client.fetch_airport_traffic_hour("KJFK", test_date)
+        print(f"JFK traffic: {count}")

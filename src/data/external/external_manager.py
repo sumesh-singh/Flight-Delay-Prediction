@@ -116,7 +116,9 @@ class ExternalManager:
                 e_str = year_end.strftime("%Y-%m-%d")
 
                 # Fetch data (will use cache)
-                weather_df = self.noaa.fetch_daily_weather(station_id, s_str, e_str)
+                weather_df = self.noaa.fetch_daily_weather(
+                    station_id, s_str, e_str, local_only=True
+                )
 
                 if not weather_df.empty:
                     # Add to cache for quick lookup
@@ -187,69 +189,137 @@ class ExternalManager:
         return df
 
     def _enrich_traffic_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Add OpenSky traffic counts."""
+        """Add OpenSky traffic counts (Vectorized Merge)."""
         self.logger.info("Adding traffic features...")
 
-        # Traffic is hour-specific.
-        # We need (Airport, Date, Hour) -> Count
-        # OpenSky Client takes (ICAO, Datetime)
+        # 1. Round CRS_DEP_TIME to nearest hour to match traffic data granularity
+        # CRS_DEP_TIME is HHMM int. Convert to hours approx.
+        # 1230 -> 12.5 -> 12
+        # Traffic data is hourly.
 
-        # Optimization:
-        # Group by (ORIGIN, FL_DATE, Hour) to minimize API calls.
+        # Helper to get datetime hour from FL_DATE + CRS_DEP_TIME
+        # CRS_DEP_TIME is 0-2359.
+        hours = (df["CRS_DEP_TIME"] // 100).astype(int)  # 1230 // 100 = 12
 
-        df["hour"] = (df["CRS_DEP_TIME"] // 60).astype(int)
+        # 2. Identify unique (ICAO, Date) keys needed
+        # We need to map ORIGIN (IATA) to ICAO first
+        # Doing this per-row is slow. Do we have the ICAO column?
+        # If not, let's map unique airports first.
 
-        # Create a unique list of needed lookups
-        # Unique (Origin, Date, Hour)
-        # Note: 'date' + 'hour' -> datetime
+        unique_origins = df["ORIGIN"].unique()
+        iata_to_icao = {iata: self.mapper.get_icao(iata) for iata in unique_origins}
 
-        # Limit scope: fetching traffic for every single flight in a large dataset is slow via API.
-        # We should iterate through the data's timeframe.
+        # Create a temp column for ICAO
+        # Use map which is faster than apply
+        df["origin_icao"] = df["ORIGIN"].map(iata_to_icao)
 
-        # For prototype/sampling, we will do a 'apply' but catches errors.
+        # We need traffic for these dates
+        unique_dates = df["FL_DATE"].dt.date.unique()
 
-        # To make this fast, we ideally pre-fetch.
-        # Given we are in execution mode, let's implement a 'safe' lookup.
+        # 3. Build a local traffic cache for this chunk
+        # We will load traffic data for ALL unique identifiers in this chunk into one DF
+        # Then merge.
 
-        def get_traffic(row):
-            iata = row["ORIGIN"]
+        traffic_records = []
+
+        # Iterate unique dates (usually 1 month = 30 days) and unique airports (size N)
+        # This is essentially: Load Cache Files involved in this chunk.
+
+        # Optimization: Group by ICAO first? No, Cache is by file per Day per Airport (or per Day?)
+        # ExternalManager client says: cache_dir / f"{icao_code}_{date_str}_{mode}.parquet"
+        # So it is per AIRPORT per DAY.
+
+        # This means for 300 airports * 30 days = 9000 file reads.
+        # That's a lot for one chunk.
+        # However, `opensky_client` might be slow if we call fetch.
+        # We assume data is cached.
+
+        # Let's try to be smart.
+        # Identify unique (ICAO, Date) pairs actually present in data.
+        # Group by ICAO, FL_DATE to get the list of needed files.
+
+        needed_pairs = df[["origin_icao", "FL_DATE"]].drop_duplicates()
+
+        # Limit checking: If we have > 5000 pairs, this might be slow loop in Python.
+        # But file IO is the bottleneck.
+
+        for _, row in needed_pairs.iterrows():
+            icao = row["origin_icao"]
             date_val = row["FL_DATE"]
-            hour = row["hour"]
+            date_str = date_val.strftime("%Y-%m-%d")
 
-            icao = self.mapper.get_icao(iata)
+            # Use Client to fetch (it handles caching)
+            # But the client `fetch_airport_traffic_hour` returns a single int.
+            # We want the whole day if we are loading the file anyway.
 
-            # Construct datetime
-            dt = date_val + timedelta(hours=int(hour))
+            # Access client cache directly?
+            # Better to use a method that returns the daily series.
 
-            # Fetch
-            try:
-                # Use departure density as proxy for congestion
-                count = self.opensky.fetch_airport_traffic_hour(icao, dt, "departure")
-                return count if count != -1 else np.nan
-            except Exception:
-                return np.nan
+            # Let's bypass the client's single-value getter and implement a bulk loader here
+            # or add a bulk loader to client.
+            # For now, implemented here to modify Manager only.
 
-        # Applying row-by-row is SLOW.
-        # But `fetch_airport_traffic_hour` caches by DAY.
-        # So repeated calls for the same day/hour are fast (dict lookup in cache).
-        # Calls for same day different hour are fast (same cache file).
+            cache_file = self.opensky.cache_dir / f"{icao}_{date_str}_departure.parquet"
+            if cache_file.exists():
+                try:
+                    daily_df = pd.read_parquet(cache_file)
+                    # daily_df has index 'datetime' (hourly), column 'count'
 
-        # Apply to unique combos to verify speed?
-        # Let's apply to the dataframe but with a limit or warnings?
-        # For now, we'll try applying to the first N rows or all if small.
+                    # We need to join on Hour.
+                    # Convert index to Hour integer?
+                    # Index is timestamp 2024-01-01 00:00:00, etc.
 
-        if len(df) > 1000:
-            self.logger.warning(
-                "Large dataframe detected. Traffic enrichment might be slow initially."
-            )
+                    # Store as records: (ICAO, Date, Hour) -> Count
+                    for ts, count_row in daily_df.iterrows():
+                        # ts is Timestamp
+                        h = ts.hour
+                        traffic_records.append(
+                            {
+                                "origin_icao": icao,
+                                "date_val": date_val,
+                                "hour_val": h,
+                                "traffic_count": count_row["count"],
+                            }
+                        )
 
-        df["ORIGIN_AIRPORT_TRAFFIC"] = df.apply(get_traffic, axis=1)
+                except Exception as e:
+                    pass  # Corrupt file or other issue
 
-        # Fill NaN with 0 (missing traffic data ~ unavailable/low traffic)
-        df["ORIGIN_AIRPORT_TRAFFIC"] = df["ORIGIN_AIRPORT_TRAFFIC"].fillna(0)
+            # If not exists, we skip (0 traffic).
+            # We do NOT call API here to avoid 1M API calls in a loop.
 
-        # Drop temp hour
-        df = df.drop(columns=["hour"])
+        if not traffic_records:
+            # excessive loop or no data
+            df["ORIGIN_AIRPORT_TRAFFIC"] = 0
+            df = df.drop(columns=["origin_icao"], errors="ignore")
+            return df
+
+        # 4. Create Traffic Lookup DF
+        traffic_df = pd.DataFrame(traffic_records)
+
+        # 5. Merge
+        # We need to merge df with traffic_df on [origin_icao, FL_DATE, hour]
+        # We created 'hours' series earlier. Add it to df temporarily.
+        df["hour_temp"] = hours
+
+        df = df.merge(
+            traffic_df,
+            left_on=["origin_icao", "FL_DATE", "hour_temp"],
+            right_on=["origin_icao", "date_val", "hour_val"],
+            how="left",
+        )
+
+        # 6. Cleanup
+        df["ORIGIN_AIRPORT_TRAFFIC"] = df["traffic_count"].fillna(0).astype("float32")
+
+        drop_cols = [
+            "origin_icao",
+            "hour_temp",
+            "date_val",
+            "hour_val",
+            "traffic_count",
+        ]
+        df = df.drop(columns=[c for c in drop_cols if c in df.columns])
 
         return df
 

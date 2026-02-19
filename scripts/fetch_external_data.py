@@ -45,7 +45,7 @@ def get_dataset_scope():
     # We'll just look at a few representative files or all if possible.
     # To be fast, let's look at one file per year/month if many.
 
-    csv_files = list(RAW_DATA_DIR.glob("*.zip")) + list(RAW_DATA_DIR.glob("*.csv"))
+    csv_files = list(RAW_DATA_DIR.rglob("*.zip")) + list(RAW_DATA_DIR.rglob("*.csv"))
 
     if not csv_files:
         logger.error(f"No data files found in {RAW_DATA_DIR}")

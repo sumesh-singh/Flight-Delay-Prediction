@@ -125,3 +125,6 @@ data/raw/2024/readme.html
 data/raw/2023/readme.html
 data/raw/
 temp/INTEGRATION_GUIDE.md
+experiments/
+test_output.txt
+test_results.txt

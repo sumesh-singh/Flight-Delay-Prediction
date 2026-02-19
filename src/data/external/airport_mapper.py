@@ -32,8 +32,35 @@ class AirportMapper:
             ["Latitude", "Longitude"]
         ].to_dict("index")
 
+        self._warned = set()
+
     def _load_mapping(self) -> pd.DataFrame:
-        """Load and validate the airport coordinates CSV."""
+        """Load and validate airport coordinates."""
+        # Priority 1: OurAirports metadata (from data/metadata/airports.csv)
+        # This has accurate coordinates and ICAO/IATA codes
+        metadata_path = EXTERNAL_DATA_DIR.parents[1] / "metadata" / "airports.csv"
+
+        if metadata_path.exists():
+            try:
+                # OurAirports CSV columns: id,ident,type,name,latitude_deg,longitude_deg,elevation_ft,continent,iso_country,iso_region,municipality,scheduled_service,gps_code,iata_code,local_code,home_link,wikipedia_link,keywords
+                df = pd.read_csv(metadata_path)
+                # Filter for airports with IATA codes
+                df = df[df["iata_code"].notna()].copy()
+
+                # Rename to standard internal format
+                df = df.rename(
+                    columns={
+                        "iata_code": "IATA",
+                        "ident": "ICAO",
+                        "latitude_deg": "Latitude",
+                        "longitude_deg": "Longitude",
+                    }
+                )
+                return df[["IATA", "ICAO", "Latitude", "Longitude"]]
+            except Exception as e:
+                print(f"Warning: Failed to load metadata from {metadata_path}: {e}")
+
+        # Priority 2: Fallback to local simplified CSV
         if not self.coordinates_path.exists():
             print(f"Warning: Mapping file not found at {self.coordinates_path}")
             return pd.DataFrame(columns=["IATA", "ICAO", "Latitude", "Longitude"])
@@ -65,7 +92,9 @@ class AirportMapper:
             coords = self.iata_to_coords[iata_code]
             return coords["Latitude"], coords["Longitude"]
 
-        print(f"Warning: No coordinates found for {iata_code}")
+        if iata_code not in self._warned:
+            print(f"Warning: No coordinates found for {iata_code}")
+            self._warned.add(iata_code)
         return 0.0, 0.0
 
 

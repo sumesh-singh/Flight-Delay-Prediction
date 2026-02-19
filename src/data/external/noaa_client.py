@@ -61,7 +61,11 @@ class NOAAClient:
             return {}
 
     def fetch_daily_weather(
-        self, station_id: str, start_date: str, end_date: str
+        self,
+        station_id: str,
+        start_date: str,
+        end_date: str,
+        local_only: bool = False,
     ) -> pd.DataFrame:
         """
         Fetch daily summaries (GHCND) for a specific station and date range.
@@ -71,6 +75,7 @@ class NOAAClient:
             station_id: NOAA Station ID (e.g., 'GHCND:USW00094789' for JFK)
             start_date: 'YYYY-MM-DD'
             end_date: 'YYYY-MM-DD'
+            local_only: If True, do not make API calls if cache is missing.
 
         Returns:
             DataFrame with columns: DATE, TMAX, TMIN, PRCP, SNOW, AWND
@@ -100,6 +105,27 @@ class NOAAClient:
             chunk_start_str = current_start.strftime("%Y-%m-%d")
             chunk_end_str = current_end.strftime("%Y-%m-%d")
 
+            # Check chunk cache
+            chunk_file = (
+                self.cache_dir
+                / f"{station_id.replace(':', '_')}_{chunk_start_str}_{chunk_end_str}.parquet"
+            )
+
+            if chunk_file.exists():
+                try:
+                    df = pd.read_parquet(chunk_file)
+                    all_dfs.append(df)
+                    current_start = current_end + pd.DateOffset(days=1)
+                    continue
+                except:
+                    pass
+
+            if local_only:
+                # Skip API call
+                current_start = current_end + pd.DateOffset(days=1)
+                continue
+
+            # Fetch
             print(
                 f"Fetching weather for {station_id} ({chunk_start_str} to {chunk_end_str})..."
             )

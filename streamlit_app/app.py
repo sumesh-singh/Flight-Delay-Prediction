@@ -1,6 +1,6 @@
 """
 Flight Delay Prediction - Streamlit UI
-Phase 4: Inference & Model Comparison
+Unified pipeline: trains with SMOTE, uses optimal thresholds, supports all models.
 """
 
 import streamlit as st
@@ -30,20 +30,58 @@ st.title(f"{APP_ICON} {APP_TITLE}")
 st.caption(APP_SUBTITLE)
 
 # Sidebar - Model Selection
-st.sidebar.header("Model Selection")
-selected_model_name = st.sidebar.selectbox(
+st.sidebar.header("🧠 Model Selection")
+
+# Check which models have artifacts
+available_models = {}
+for display_name, model_type in MODELS.items():
+    model_dir = Path(f"models/{model_type}")
+    has_model = bool(list(model_dir.glob(f"{model_type}_model_*.joblib")))
+    if has_model:
+        # Check if this is the best model
+        import json
+
+        meta_path = model_dir / "metadata.json"
+        is_best = False
+        if meta_path.exists():
+            with open(meta_path) as f:
+                meta = json.load(f)
+                is_best = meta.get("is_best_model", False)
+        label = f"⭐ {display_name} (Best)" if is_best else display_name
+        available_models[label] = model_type
+
+if not available_models:
+    st.error("""
+    ❌ **No trained models found!**
+    
+    Run the training pipeline first:
+    ```
+    python train_pipeline.py
+    ```
+    """)
+    st.stop()
+
+selected_model_label = st.sidebar.selectbox(
     "Choose Model",
-    list(MODELS.keys()),
-    index=1,  # Default to Random Forest
+    list(available_models.keys()),
+    index=0,
 )
-model_type = MODELS[selected_model_name]
+model_type = available_models[selected_model_label]
 
-st.sidebar.markdown("---")
-st.sidebar.info(f"""
-**Current Model**: {selected_model_name}
-
-Navigate to other pages using the sidebar menu to view model comparisons and data explorer.
-""")
+# Show model info in sidebar
+try:
+    predictor = ModelPredictor(model_type)
+    info = predictor.get_model_info()
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(f"""
+    **Model**: {model_type.replace("_", " ").title()}  
+    **F1 Score**: {info.get("f1", "N/A")}  
+    **Threshold**: {info.get("threshold", 0.5)}  
+    **Trained**: {info.get("trained_on", "Unknown")}
+    """)
+except FileNotFoundError:
+    predictor = None
+    st.sidebar.warning("Model artifacts missing. Run train_pipeline.py first.")
 
 # Main content
 st.header("Flight Delay Prediction")
@@ -57,14 +95,14 @@ with st.form("prediction_form"):
             "Flight Date",
             value=date.today(),
             min_value=date(2020, 1, 1),
-            max_value=date(2026, 12, 31),
+            max_value=date(2027, 12, 31),
         )
 
         carrier = st.text_input(
             "Airline Code",
             value="AA",
             max_chars=2,
-            help="2-letter airline code (e.g., AA, UA, DL)",
+            help="2-letter airline code (e.g., AA, UA, DL, WN, B6)",
         )
 
     with col2:
@@ -76,7 +114,7 @@ with st.form("prediction_form"):
         )
 
         origin = st.text_input(
-            "Origin Airport", value="JFK", max_chars=3, help="3-letter airport code"
+            "Origin Airport", value="JFK", max_chars=3, help="3-letter IATA code"
         )
 
     with col3:
@@ -88,7 +126,7 @@ with st.form("prediction_form"):
             "Destination Airport",
             value="LAX",
             max_chars=3,
-            help="3-letter airport code",
+            help="3-letter IATA code",
         )
 
     distance = st.number_input(
@@ -96,11 +134,11 @@ with st.form("prediction_form"):
         value=None,
         min_value=0.0,
         max_value=5000.0,
-        help="Optional - median will be used if not provided",
+        help="Optional — median (800 mi) will be used if not provided",
     )
 
     submitted = st.form_submit_button(
-        "Predict Delay", type="primary", use_container_width=True
+        "🔮 Predict Delay", type="primary", use_container_width=True
     )
 
 # Process prediction
@@ -132,7 +170,7 @@ if submitted:
         st.error(f"Invalid airports: {airports_msg}")
         is_valid = False
 
-    if is_valid:
+    if is_valid and predictor is not None:
         try:
             # Convert times to integers
             dep_time = int(dep_time_str)
@@ -140,7 +178,6 @@ if submitted:
 
             # Load model and predict
             with st.spinner("Making prediction..."):
-                predictor = ModelPredictor(model_type)
                 prediction, probability = predictor.predict(
                     flight_date,
                     dep_time,
@@ -167,7 +204,7 @@ if submitted:
                 )
 
             with col3:
-                st.metric("Model", selected_model_name)
+                st.metric("Model", selected_model_label.replace("⭐ ", ""))
 
             # Visualization
             color = get_delay_color(prediction == "Delayed")
@@ -178,6 +215,7 @@ if submitted:
                 <p style="margin: 10px 0 0 0;">
                     The model predicts this flight will be <strong>{prediction.lower()}</strong> with 
                     <strong>{format_probability(probability)}</strong> confidence.
+                    <br><small>Using threshold: {info.get("threshold", 0.5)} | SMOTE-trained</small>
                 </p>
             </div>
             """,
@@ -188,7 +226,7 @@ if submitted:
             st.error(f"""
             Model artifacts not found: {e}
             
-            Please run: `python scripts/export_artifacts.py`
+            Please run: `python train_pipeline.py`
             """)
         except Exception as e:
             st.error(f"Prediction failed: {e}")
@@ -196,4 +234,4 @@ if submitted:
 
 # Footer
 st.markdown("---")
-st.caption("Phase 4: Streamlit UI | Inference-Only (No Training)")
+st.caption("Flight Delay Prediction | SMOTE + Human Factors + Threshold Tuning")

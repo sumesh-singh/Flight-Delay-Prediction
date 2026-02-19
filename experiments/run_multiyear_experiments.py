@@ -16,6 +16,7 @@ from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import gc
 import warnings
+import joblib
 
 warnings.filterwarnings("ignore")
 
@@ -46,18 +47,50 @@ class MemoryOptimizedExperimentRunner:
         self.output_dir = Path(f"experiments/multiyear_results_{self.timestamp}")
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        print("=" * 70)
-        print("MEMORY-OPTIMIZED MULTI-YEAR FLIGHT DELAY PREDICTION")
-        print("=" * 70)
-        print(f"Chunk size: {chunk_size:,} rows")
-        print(f"Output: {self.output_dir}")
-        print("=" * 70 + "\n")
+        # Setup Logging
+        self.log_dir = Path("experiments/logs")
+        self.log_dir.mkdir(exist_ok=True)
+        self.log_file = self.log_dir / f"run_{self.timestamp}.log"
+
+        # Redirect stdout/stderr to tee to file
+        self.logger = self._setup_logger()
+
+        self.logger.info("=" * 70)
+        self.logger.info("MEMORY-OPTIMIZED MULTI-YEAR FLIGHT DELAY PREDICTION")
+        self.logger.info("=" * 70)
+        self.logger.info(f"Chunk size: {chunk_size:,} rows")
+        self.logger.info(f"Output: {self.output_dir}")
+        self.logger.info(f"Logs: {self.log_file}")
+        self.logger.info("=" * 70 + "\n")
+
+    def _setup_logger(self):
+        import logging
+
+        logger = logging.getLogger("ExperimentRunner")
+        logger.setLevel(logging.INFO)
+
+        # File handler
+        fh = logging.FileHandler(self.log_file)
+        fh.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
+
+        # Console handler
+        ch = logging.StreamHandler(sys.stdout)
+        ch.setFormatter(logging.Formatter("%(message)s"))
+
+        logger.addHandler(fh)
+        logger.addHandler(ch)
+
+        return logger
+
+    def log(self, msg):
+        self.logger.info(msg)
 
     def normalize_bts_schema(self, df: pd.DataFrame) -> pd.DataFrame:
         """Normalize BTS column names."""
         column_mapping = {
             "FlightDate": "FL_DATE",
             "Reporting_Airline": "OP_CARRIER",
+            "Tail_Number": "TAIL_NUM",
             "Origin": "ORIGIN",
             "Dest": "DEST",
             "CRSDepTime": "CRS_DEP_TIME",
@@ -126,13 +159,15 @@ class MemoryOptimizedExperimentRunner:
         Train model by processing data in chunks.
         Uses SGDClassifier for incremental learning.
         """
-        print("\n" + "=" * 70)
-        print("STEP 1: CHUNKED TRAINING WITH CLASS BALANCING")
-        print("=" * 70)
+        self.log("\n" + "=" * 70)
+        self.log("STEP 1: CHUNKED TRAINING WITH CLASS BALANCING")
+        self.log("=" * 70)
 
         # Initialize components
         loader = MultiYearDataLoader()
-        engineer = FeatureEngineer()
+        # ENABLE EXTERNAL DATA
+        engineer = FeatureEngineer(use_external_data=True)
+        self.log("External Data Integration: ENABLED")
         target_gen = TargetGenerator()
 
         # ADDED: StandardScaler (Critical for SGD)
@@ -166,18 +201,21 @@ class MemoryOptimizedExperimentRunner:
         from sklearn.utils.class_weight import compute_sample_weight
 
         for year in years:
-            print(f"\nProcessing year {year}...")
+            self.log(f"\nProcessing year {year}...")
             csv_files = loader.get_available_files(year)
 
             for csv_file in csv_files:
-                print(f"\n  Loading {csv_file.name}...")
+                self.log(f"\n  Loading {csv_file.name}...")
 
                 # Read in chunks
                 for chunk_df in pd.read_csv(
-                    csv_file, chunksize=self.chunk_size, low_memory=False
+                    csv_file,
+                    chunksize=self.chunk_size,
+                    usecols=loader.ESSENTIAL_COLS,
+                    low_memory=False,
                 ):
                     chunk_num += 1
-                    print(f"    Chunk {chunk_num}: {len(chunk_df):,} rows", end=" -> ")
+                    self.log(f"    Chunk {chunk_num}: {len(chunk_df):,} rows -> ")
 
                     # Process chunk
                     X_chunk, y_chunk = self.process_chunk_to_features(
@@ -188,7 +226,7 @@ class MemoryOptimizedExperimentRunner:
                     )
 
                     if X_chunk is None or len(X_chunk) == 0:
-                        print("Skipped (empty after cleaning)")
+                        self.log("Skipped (empty after cleaning)")
                         continue
 
                     # Store feature names from first chunk
@@ -217,26 +255,27 @@ class MemoryOptimizedExperimentRunner:
                     total_samples += len(X_chunk)
 
                     delay_rate = y_chunk.mean()
-                    print(
-                        f"Trained on {len(X_chunk):,} samples (Delay rate: {delay_rate:.1%}, Total: {total_samples:,})"
+                    delay_rate = y_chunk.mean()
+                    self.log(
+                        f"    Trained on {len(X_chunk):,} samples (Delay rate: {delay_rate:.1%}, Total: {total_samples:,})"
                     )
 
                     # Clean up
                     del chunk_df, X_chunk, X_scaled, y_chunk
                     gc.collect()
 
-        print(f"\n{'=' * 70}")
-        print(f"TRAINING COMPLETE")
-        print(f"Total samples processed: {total_samples:,}")
-        print(f"Class distribution:")
-        print(
+        self.log(f"\n{'=' * 70}")
+        self.log(f"TRAINING COMPLETE")
+        self.log(f"Total samples processed: {total_samples:,}")
+        self.log(f"Class distribution:")
+        self.log(
             f"  On-Time: {total_ontime:,} ({total_ontime / total_samples * 100:.1f}%)"
         )
-        print(
+        self.log(
             f"  Delayed: {total_delayed:,} ({total_delayed / total_samples * 100:.1f}%)"
         )
-        print(f"Features: {len(feature_names)}")
-        print(f"{'=' * 70}")
+        self.log(f"Features: {len(feature_names)}")
+        self.log(f"{'=' * 70}")
 
         return model, engineer, target_gen, scaler, feature_names
 
@@ -251,9 +290,9 @@ class MemoryOptimizedExperimentRunner:
         """
         Evaluate model on 2025 test data (processed in chunks).
         """
-        print("\n" + "=" * 70)
-        print("STEP 2: EVALUATING ON 2025 TEST DATA")
-        print("=" * 70)
+        self.log("\n" + "=" * 70)
+        self.log("STEP 2: EVALUATING ON 2025 TEST DATA")
+        self.log("=" * 70)
 
         loader = MultiYearDataLoader()
 
@@ -265,10 +304,13 @@ class MemoryOptimizedExperimentRunner:
         csv_files = loader.get_available_files(2025)[:11]  # Jan-Nov
 
         for csv_file in csv_files:
-            print(f"\nEvaluating {csv_file.name}...")
+            self.log(f"\nEvaluating {csv_file.name}...")
 
             for chunk_df in pd.read_csv(
-                csv_file, chunksize=self.chunk_size, low_memory=False
+                csv_file,
+                chunksize=self.chunk_size,
+                usecols=loader.ESSENTIAL_COLS,
+                low_memory=False,
             ):
                 chunk_num += 1
 
@@ -295,7 +337,7 @@ class MemoryOptimizedExperimentRunner:
                 all_y_true.extend(y_chunk.tolist())
                 all_y_pred.extend(y_pred.tolist())
 
-                print(f"  Chunk {chunk_num}: {len(X_chunk):,} samples evaluated")
+                self.log(f"  Chunk {chunk_num}: {len(X_chunk):,} samples evaluated")
 
                 # Clean up
                 del chunk_df, X_chunk, X_scaled, y_chunk, y_pred
@@ -316,27 +358,27 @@ class MemoryOptimizedExperimentRunner:
         cm = confusion_matrix(y_true, y_pred)
         tn, fp, fn, tp = cm.ravel()
 
-        print(f"\n{'=' * 70}")
-        print("OVERALL PERFORMANCE (2025 Test Set)")
-        print(f"{'=' * 70}")
-        print(f"Samples: {len(y_true):,}")
-        print(f"Accuracy:  {accuracy:.4f}")
-        print(f"Precision: {precision:.4f}")
-        print(f"Recall:    {recall:.4f}")
-        print(f"F1-Score:  {f1:.4f}")
-        print(f"\nConfusion Matrix:")
-        print(f"  True Negatives (On-Time correctly predicted):  {tn:,}")
-        print(f"  False Positives (On-Time predicted as Delayed): {fp:,}")
-        print(f"  False Negatives (Delayed predicted as On-Time): {fn:,}")
-        print(f"  True Positives (Delayed correctly predicted):   {tp:,}")
-        print(f"\nPrediction Distribution:")
-        print(
+        self.log(f"\n{'=' * 70}")
+        self.log("OVERALL PERFORMANCE (2025 Test Set)")
+        self.log(f"{'=' * 70}")
+        self.log(f"Samples: {len(y_true):,}")
+        self.log(f"Accuracy:  {accuracy:.4f}")
+        self.log(f"Precision: {precision:.4f}")
+        self.log(f"Recall:    {recall:.4f}")
+        self.log(f"F1-Score:  {f1:.4f}")
+        self.log(f"\nConfusion Matrix:")
+        self.log(f"  True Negatives (On-Time correctly predicted):  {tn:,}")
+        self.log(f"  False Positives (On-Time predicted as Delayed): {fp:,}")
+        self.log(f"  False Negatives (Delayed predicted as On-Time): {fn:,}")
+        self.log(f"  True Positives (Delayed correctly predicted):   {tp:,}")
+        self.log(f"\nPrediction Distribution:")
+        self.log(
             f"  Predicted On-Time: {(y_pred == 0).sum():,} ({(y_pred == 0).sum() / len(y_pred) * 100:.1f}%)"
         )
-        print(
+        self.log(
             f"  Predicted Delayed: {(y_pred == 1).sum():,} ({(y_pred == 1).sum() / len(y_pred) * 100:.1f}%)"
         )
-        print(f"{'=' * 70}")
+        self.log(f"{'=' * 70}")
 
         # Save results
         results = {
@@ -356,7 +398,15 @@ class MemoryOptimizedExperimentRunner:
         with open(self.output_dir / "results.json", "w") as f:
             json.dump(results, f, indent=2)
 
-        print(f"\nResults saved to {self.output_dir / 'results.json'}")
+        # Save artifacts
+        self.log(f"\nSaving artifacts to {self.output_dir}...")
+        joblib.dump(model, self.output_dir / "sgd_model.joblib")
+        joblib.dump(scaler, self.output_dir / "scaler.joblib")
+        joblib.dump(feature_names, self.output_dir / "feature_names.joblib")
+        # Save engineer (for label encoders)
+        joblib.dump(engineer, self.output_dir / "feature_engineer.joblib")
+
+        self.log(f"Results saved to {self.output_dir / 'results.json'}")
 
         return results
 
@@ -376,12 +426,12 @@ def main():
         model, engineer, target_gen, scaler, feature_names
     )
 
-    print("\n" + "=" * 70)
-    print("EXPERIMENT COMPLETE")
-    print("=" * 70)
-    print(f"Output directory: {runner.output_dir}")
-    print(f"Final F1-Score: {results['f1_score']:.4f}")
-    print("=" * 70)
+    runner.log("\n" + "=" * 70)
+    runner.log("EXPERIMENT COMPLETE")
+    runner.log("=" * 70)
+    runner.log(f"Output directory: {runner.output_dir}")
+    runner.log(f"Final F1-Score: {results['f1_score']:.4f}")
+    runner.log("=" * 70)
 
 
 if __name__ == "__main__":
